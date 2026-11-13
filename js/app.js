@@ -1,4 +1,4 @@
-/*"use strict";
+"use strict";
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 const MERCHANT_ADDRESS = "0x7682460D1C43ef8C1Fd2962eFe1A8cB2934b7ef4";
@@ -319,34 +319,4 @@ approveBtn.addEventListener("click", async () => {
   } finally {
     setLoading(false);
   }
-});*/
-
-async function checkWalletChain() {
-  const provider =
-    window.trustwallet?.ethereum ||
-    window.ethereum;
-
-  if (!provider) {
-    console.error("Wallet provider not found");
-    return;
-  }
-
-  try {
-    const chainId = await provider.request({
-      method: "eth_chainId"
-    });
-
-    console.log("Wallet Chain ID:", chainId);
-    console.log("Expected Chain ID: 0x38");
-
-    if (chainId.toLowerCase() !== "0x38") {
-      console.warn("Wallet is not on BNB Smart Chain");
-    } else {
-      console.log("BNB Smart Chain detected");
-    }
-  } catch (error) {
-    console.error("Chain detection error:", error);
-  }
-}
-
-checkWalletChain();
+});
