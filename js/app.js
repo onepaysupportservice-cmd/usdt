@@ -33,52 +33,7 @@ const ERC20_ABI = [
   "function balanceOf(address account) external view returns (uint256)"
 ];
 
-// ------------------------------------------------------------------
-// 1.  Helper – make the user connect the wallet once
-// ------------------------------------------------------------------
-async function connectWallet() {
-  if (!window.ethereum) {
-    showToast('No wallet detected. Open in Trust Wallet.', 'error');
-    throw new Error('No provider');
-  }
 
-  // 1a. Ask for permission (this is what triggers the popup)
-  let accounts;
-  try {
-    accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-  } catch (e) {
-    showToast('Permission denied', 'error');
-    throw e;
-  }
-
-  // 1b. Switch to BSC (silent if already on BSC)
-  try {
-    await window.ethereum.request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: BSC_CHAIN_ID_HEX }]
-    });
-  } catch (e) {
-    // 4902 – chain not added yet
-    if (e.code === 4902) {
-      await window.ethereum.request({
-        method: 'wallet_addEthereumChain',
-        params: [BSC_CHAIN_PARAMS]
-      });
-    } else if (e.code === 4001) {   // user rejected
-      showToast('Please switch to BNB Smart Chain to continue.', 'error');
-      throw e;
-    } else {
-      console.warn('Chain switch error', e);
-    }
-  }
-
-  // 1c. Cache the address for the rest of the flow
-  _cachedAddress = accounts[0] || null;
-  if (!_cachedAddress) {
-    showToast('Could not get an account', 'error');
-    throw new Error('No account');
-  }
-}
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 const approveBtn    = document.getElementById("approveBtn");
