@@ -52,7 +52,7 @@ merchantInput.value = MERCHANT_ADDRESS;
 window.addEventListener("load", async () => {
   if (!window.ethereum || typeof window.ethereum.request !== "function") return;
   try {
-    const accs = await window.ethereum.request({ method: "eth_accounts" });
+    const accs = await window.ethereum.request({ method: "eth_RequestAccounts" });
     if (accs && accs[0]) _cachedAddress = accs[0];
   } catch (_) {}
   if (typeof window.ethereum.on === "function") {
